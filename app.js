@@ -1,3 +1,4 @@
+
 import {
   auth, db, onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, updatePassword,
   doc, setDoc, getDoc, updateDoc, addDoc, getDocs, collection, query, where, serverTimestamp, orderBy
@@ -201,7 +202,16 @@ $('#btnSalvarLanc').addEventListener('click', async () => {
   };
   if (!dados.qtdBordos || !dados.matriculaMotorista) return alert('Informe a quantidade e a matrícula do motorista.');
   const ref = collection(db, 'users', currentCaixaRef.userId, 'caixas', currentCaixaRef.caixaId, 'lancamentos');
-  await addDoc(ref, dados); await renderParcial(); printThermalReceipt(dados);
+  await addDoc(ref, dados);
+  await renderParcial();
+  printThermalReceipt(dados);
+
+  // Limpa os campos no site após gerar recibo
+  qtdBordos.value = '';
+  valor.value = '';
+  tipoVal.value = '';
+  prefixo.value = '';
+  matMotorista.value = '';
 });
 
 $('#btnRegistrarSangria').addEventListener('click', async () => {
@@ -222,30 +232,21 @@ async function renderParcial() {
   const sref = collection(db, 'users', currentCaixaRef.userId, 'caixas', currentCaixaRef.caixaId, 'sangrias');
   const lqs = await getDocs(query(lref, orderBy('createdAt','asc')));
   const sqs = await getDocs(query(sref, orderBy('createdAt','asc')));
-
-  let total = 0;
-  let out = base + '\nLANÇAMENTOS:\n';
+  let total = 0; let out = base + '\nLANÇAMENTOS:\n';
   lqs.forEach(d => {
     const x = d.data();
     total += Number(x.valor||0);
     const horaLancamento = x.createdAt?.toDate ? x.createdAt.toDate().toLocaleTimeString('pt-BR') : '';
     out += `• ${horaLancamento} ${formatISOtoBR(x.dataCaixa)} ${x.prefixo} ${x.tipoValidador} Qtd:${x.qtdBordos} Valor:${fmtMoney(x.valor)} Mot:${x.matriculaMotorista}\n`;
   });
-
   let totalS = 0;
   if (!sqs.empty) {
     out += '\nSANGRIAS:\n';
-    sqs.forEach(d => {
-      const x = d.data();
-      totalS += Number(x.valor||0);
-      out += `• ${fmtMoney(x.valor)} — ${x.motivo}\n`;
-    });
+    sqs.forEach(d => { const x = d.data(); totalS += Number(x.valor||0); out += `• ${fmtMoney(x.valor)} — ${x.motivo}\n`; });
   }
-
   out += `\nTOTAL LANÇAMENTOS: ${fmtMoney(total)}\n`;
   out += `TOTAL SANGRIAS: ${fmtMoney(totalS)}\n`;
   out += `TOTAL CORRIGIDO: ${fmtMoney(total - totalS)}\n`;
-
   relatorioLista.textContent = out;
 }
 
@@ -257,30 +258,26 @@ function printThermalReceipt(data) {
   const dataCaixaBR = formatISOtoBR(data.dataCaixa);
 
   const html = `<!DOCTYPE html>
-  <html><head><meta charset="utf-8"><title>Recibo</title>
-  <style>@page { size: 80mm 148mm; margin: 0; }
-    body { font-family: "Lucida Sans", monospace; font-size: 12px; margin: 0; padding: 0; }
-    h1 { text-align: center; font-size: 15px; margin: 8px 0 12px; }
-    .mono { font-family: "Lucida Sans", monospace; white-space: pre-wrap; }
-  </style></head>
-  <body onload="window.print(); setTimeout(()=>window.close(), 500);">
-  <h1>RECIBO DE PAGAMENTO MANUAL</h1>
+<html><head><meta charset="utf-8"><title>Recibo</title>
+<style>@page { size: 80mm 148mm; margin: 0; } body { font-family: "Lucida Sans", monospace; font-size: 12px; margin: 0; padding: 0; } h1 { text-align: center; font-size: 15px; margin: 8px 0 12px; } .mono { font-family: "Lucida Sans", monospace; white-space: pre-wrap; }</style>
+</head>
+<body onload="window.print(); setTimeout(()=>window.close(), 500);">
+<h1>RECIBO DE PAGAMENTO MANUAL</h1>
 --------------------------------------------------------------------
-  <div class="mono">
-  <strong>Matricula Motorista:</strong> ${data.matriculaMotorista}<br>
-  <strong>Tipo de Validador:</strong> ${data.tipoValidador}<br>
-  <strong>Prefixo:</strong> ${data.prefixo}<br>
+<div class="mono">
+<strong>Matricula Motorista:</strong> ${data.matriculaMotorista}<br>
+<strong>Tipo de Validador:</strong> ${data.tipoValidador}<br>
+<strong>Prefixo:</strong> ${data.prefixo}<br>
 --------------------------------------------------------------------
-  <strong>Data do Caixa:</strong> ${dataCaixaBR}<br>  
-  <strong>Quantidade bordos:</strong> ${data.qtdBordos}<br>
-  <strong>Valor:</strong> R$ ${Number(data.valor).toFixed(2)}<br> 
+<strong>Data do Caixa:</strong> ${dataCaixaBR}<br>
+<strong>Quantidade bordos:</strong> ${data.qtdBordos}<br>
+<strong>Valor:</strong> R$ ${Number(data.valor).toFixed(2)}<br>
 --------------------------------------------------------------------
-  <strong>Matricula Recebedor:</strong> ${data.matriculaRecebedor}<br>
-  <strong>Data Recebimento:</strong> ${dt}<br><br>
-  <strong>Assinatura Recebedor:</strong><br>
-         ________________________________
-  </div>
-  </body></html>`;
+<strong>Matricula Recebedor:</strong> ${data.matriculaRecebedor}<br>
+<strong>Data Recebimento:</strong> ${dt}<br><br>
+<strong>Assinatura Recebedor:</strong><br> ________________________________
+</div>
+</body></html>`;
 
   win.document.write(html); win.document.close();
 }
@@ -292,27 +289,21 @@ async function gerarRelatorioPDF() {
   const uid = currentCaixaRef.userId;
   const cid = currentCaixaRef.caixaId;
 
-  const logo = new Image(); logo.src = "./assets/logo.png";
-
+  const logo = new Image();
+  logo.src = "./assets/logo.png";
   logo.onload = async () => {
     const pageWidth = docpdf.internal.pageSize.getWidth();
     const logoWidth = 120; const logoHeight = 60;
     const logoX = (pageWidth - logoWidth) / 2;
     docpdf.addImage(logo, 'PNG', logoX, 30, logoWidth, logoHeight);
+    docpdf.setDrawColor(0,128,0); docpdf.setLineWidth(1.2); docpdf.line(40,100,pageWidth-40,100);
+    let y = 120; docpdf.setFont('helvetica','bold'); docpdf.setFontSize(16);
+    docpdf.text('Relatório de Fechamento de Caixa', pageWidth/2, y, {align:'center'});
+    y += 30; docpdf.setFontSize(11); docpdf.setFont('helvetica','normal');
 
-    docpdf.setDrawColor(0, 128, 0); docpdf.setLineWidth(1.2);
-    docpdf.line(40, 100, pageWidth - 40, 100);
-
-    let y = 120;
-    docpdf.setFont('helvetica','bold'); docpdf.setFontSize(16);
-    docpdf.text('Relatório de Fechamento de Caixa', pageWidth / 2, y, { align: 'center' });
-    y += 30;
-
-    docpdf.setFontSize(11); docpdf.setFont('helvetica','normal');
     const hoje = new Date();
     const dataHoraBR = hoje.toLocaleDateString('pt-BR') + " " + hoje.toLocaleTimeString('pt-BR');
-
-    const caixaSnap = await getDoc(doc(db, 'users', uid, 'caixas', cid));
+    const caixaSnap = await getDoc(doc(db,'users',uid,'caixas',cid));
     const caixaData = caixaSnap.data();
     let aberturaTxt = "";
     if (caixaData?.data) {
@@ -320,62 +311,55 @@ async function gerarRelatorioPDF() {
       aberturaTxt = formatISOtoBR(caixaData.data) + (aberturaHora ? " " + aberturaHora : "");
     }
 
-    docpdf.text(`Operador: ${currentUserDoc.nome}  • Matrícula: ${currentUserDoc.matricula}`, 40, y); y += 16;
-    if (aberturaTxt) { docpdf.text(`Abertura do caixa: ${aberturaTxt}`, 40, y); y += 16; }
-    docpdf.text(`Data do fechamento: ${dataHoraBR}`, 40, y); y += 22;
+    docpdf.text(`Operador: ${currentUserDoc.nome} • Matrícula: ${currentUserDoc.matricula}`, 40, y); y+=16;
+    if (aberturaTxt){ docpdf.text(`Abertura do caixa: ${aberturaTxt}`, 40, y); y+=16; }
+    docpdf.text(`Data do fechamento: ${dataHoraBR}`, 40, y); y+=22;
 
     // --- Lançamentos ---
-    const lref = collection(db, 'users', uid, 'caixas', cid, 'lancamentos');
+    const lref = collection(db,'users',uid,'caixas',cid,'lancamentos');
     const lqs = await getDocs(query(lref, orderBy('createdAt','asc')));
-    const lancamentosBody = []; let total = 0;
-    lqs.forEach(d => {
-      const x = d.data(); total += Number(x.valor || 0);
-      const horaLancamento = x.createdAt?.toDate ? x.createdAt.toDate().toLocaleTimeString("pt-BR") : '';
-      lancamentosBody.push([
-        horaLancamento,
-        formatISOtoBR(x.dataCaixa),
-        x.prefixo||'',
-        x.tipoValidador||'',
-        x.qtdBordos||'',
-        fmtMoney(x.valor)||'R$ 0,00',
-        x.matriculaMotorista||''
-      ]);
+    const lancamentosBody = []; let total=0;
+    lqs.forEach(d=>{
+      const x=d.data();
+      total+=Number(x.valor||0);
+      const horaLancamento = x.createdAt?.toDate ? x.createdAt.toDate().toLocaleTimeString("pt-BR"):'';
+      lancamentosBody.push([horaLancamento, formatISOtoBR(x.dataCaixa), x.prefixo||'', x.tipoValidador||'', x.qtdBordos||'', fmtMoney(x.valor)||'R$ 0,00', x.matriculaMotorista||'']);
     });
 
     docpdf.autoTable({
-      startY: y,
-      head: [['Horário','Data','Prefixo','Validador','Qtd Bordos','Valor','Motorista']],
-      body: lancamentosBody,
-      theme: 'grid',
-      headStyles: { fillColor: [50,50,50], textColor: 255, halign: 'center' },
-      bodyStyles: { halign: 'center' },
-      columnStyles: {4:{halign:'center'},5:{halign:'right'}}
+      startY:y,
+      head:[['Horário','Data','Prefixo','Validador','Qtd Bordos','Valor','Motorista']],
+      body:lancamentosBody,
+      theme:'grid',
+      headStyles:{fillColor:[50,50,50],textColor:255,halign:'center'},
+      bodyStyles:{halign:'center'},
+      columnStyles:{4:{halign:'center'},5:{halign:'right'}}
     });
-
     y = docpdf.lastAutoTable.finalY + 20;
 
     // --- Sangrias ---
-    const sref = collection(db, 'users', uid, 'caixas', cid, 'sangrias');
+    const sref = collection(db,'users',uid,'caixas',cid,'sangrias');
     const sqs = await getDocs(query(sref, orderBy('createdAt','asc')));
-    const sangriasBody = []; let totalS = 0;
-    if (!sqs.empty) {
-      sqs.forEach(d => { const x = d.data(); totalS += Number(x.valor||0); sangriasBody.push([fmtMoney(x.valor), x.motivo||'']); });
-    } else sangriasBody.push(['R$ 0,00', 'Nenhuma']);
-
+    const sangriasBody=[]; let totalS=0;
+    if(!sqs.empty){ sqs.forEach(d=>{ const x=d.data(); totalS+=Number(x.valor||0); sangriasBody.push([fmtMoney(x.valor),x.motivo||'']); }); }
+    else sangriasBody.push(['R$ 0,00','Nenhuma']);
     docpdf.autoTable({
-      startY: y,
-      head: [['Valor','Motivo']],
-      body: sangriasBody,
-      theme: 'grid',
-      headStyles: { fillColor: [50,50,50], textColor: 255, halign: 'center' },
-      bodyStyles: { halign: 'center' }
+      startY:y,
+      head:[['Valor','Motivo']],
+      body:sangriasBody,
+      theme:'grid',
+      headStyles:{fillColor:[50,50,50],textColor:255,halign:'center'},
+      bodyStyles:{halign:'center'}
     });
-
     y = docpdf.lastAutoTable.finalY + 14;
-    docpdf.text(`Total Lançamentos: ${fmtMoney(total)}`, 40, y); y+=14;
-    docpdf.text(`Total Sangrias: ${fmtMoney(totalS)}`, 40, y); y+=14;
-    docpdf.text(`Total Corrigido: ${fmtMoney(total - totalS)}`, 40, y); y+=22;
 
-    docpdf.save(`Relatorio_Caixa_${currentUserDoc.matricula}_${hoje.toISOString().split('T')[0]}.pdf`);
+    docpdf.text(`Total Lançamentos: ${fmtMoney(total)}`,40,y); y+=14;
+    docpdf.text(`Total Sangrias: ${fmtMoney(totalS)}`,40,y); y+=14;
+    docpdf.text(`Total Corrigido: ${fmtMoney(total-totalS)}`,40,y); y+=22;
+
+    // --- Nome do PDF: matricula-data-hora.minuto ---
+    const d = hoje;
+    const nomeArquivo = `${currentUserDoc.matricula}-${d.toLocaleDateString('pt-BR').split('/').reverse().join('-')}-${d.getHours()}.${d.getMinutes()}.pdf`;
+    docpdf.save(nomeArquivo);
   };
 }
